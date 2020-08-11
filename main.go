@@ -4,51 +4,32 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
-	"github.com/gorilla/websocket"
+	"github.com/BohdanPatrash/snakes_server/pkg/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
-}
-
 func setupRoutes() {
-	http.HandleFunc("/", homePage())
-	http.HandleFunc("/ws", wsEndpoint())
+	pool := websocket.NewPool()
+	go pool.Start()
+
+	http.HandleFunc("/ws", wsEndpoint(pool))
 }
 
-func homePage() func(w http.ResponseWriter, r *http.Request) {
+func wsEndpoint(pool *websocket.Pool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Home Page")
-	}
-}
-
-func wsEndpoint() func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ws, err := upgrader.Upgrade(w, r, nil)
+		connection, err := websocket.Upgrade(w, r)
 		if err != nil {
-			log.Println(err)
+			fmt.Fprintf(w, err.Error())
 		}
-		log.Println("client successfuly connected...")
-		reader(ws)
-	}
-}
+		client := &websocket.Client{
+			ID:   strconv.Itoa(len(pool.Clients)),
+			Conn: connection,
+			Pool: pool,
+		}
 
-func reader(conn *websocket.Conn) {
-	for {
-		messageType, p, err := conn.ReadMessage()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		fmt.Println(string(p))
-
-		if err := conn.WriteMessage(messageType, p); err != nil {
-			log.Println(err)
-			return
-		}
+		pool.Register <- client
+		client.Read()
 	}
 }
 
