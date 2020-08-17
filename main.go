@@ -8,7 +8,6 @@ import (
 	"github.com/BohdanPatrash/snakes_server/snakegame"
 
 	"github.com/BohdanPatrash/snakes_server/websocket"
-	guuid "github.com/google/uuid"
 )
 
 func setupRoutes() {
@@ -24,24 +23,15 @@ func wsEndpoint(session *snakegame.GameSession) func(w http.ResponseWriter, r *h
 		connection, err := websocket.Upgrade(w, r)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
+			return
 		}
-		id, err := guuid.NewRandom()
+
+		snake, err := snakegame.NewSnake(len(session.Players), *session.Config)
 		if err != nil {
-			log.Printf("could not create UUID: %v", err)
+			fmt.Fprintf(w, err.Error())
+			return
 		}
-
-		snake := &snakegame.Snake{
-			ClientID: id.String(),
-			SpeedX:   0,
-			SpeedY:   0,
-		}
-
-		player := &snakegame.Player{
-			ID:          id.String(),
-			Conn:        connection,
-			GameSession: session,
-			Snake:       snake,
-		}
+		player := snakegame.NewPlayer(session, connection, snake)
 
 		session.Register <- player
 		player.Read()
